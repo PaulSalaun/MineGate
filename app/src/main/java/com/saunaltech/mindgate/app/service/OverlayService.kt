@@ -10,14 +10,17 @@ import androidx.compose.ui.platform.ComposeView
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.LifecycleRegistry
+import androidx.lifecycle.ViewModelStore
+import androidx.lifecycle.ViewModelStoreOwner
 import androidx.lifecycle.setViewTreeLifecycleOwner
+import androidx.lifecycle.setViewTreeViewModelStoreOwner
 import androidx.savedstate.SavedStateRegistry
 import androidx.savedstate.SavedStateRegistryController
 import androidx.savedstate.SavedStateRegistryOwner
 import androidx.savedstate.setViewTreeSavedStateRegistryOwner
 import com.saunaltech.mindgate.app.ui.overlay.OverlayScreen
 
-class OverlayService : Service(), LifecycleOwner, SavedStateRegistryOwner {
+class OverlayService : Service(), LifecycleOwner, SavedStateRegistryOwner, ViewModelStoreOwner {
 
     companion object {
         const val EXTRA_PACKAGE_NAME = "package_name"
@@ -28,10 +31,12 @@ class OverlayService : Service(), LifecycleOwner, SavedStateRegistryOwner {
 
     private val lifecycleRegistry = LifecycleRegistry(this)
     private val savedStateRegistryController = SavedStateRegistryController.create(this)
+    private val _viewModelStore = ViewModelStore()
 
     override val lifecycle: Lifecycle get() = lifecycleRegistry
     override val savedStateRegistry: SavedStateRegistry
         get() = savedStateRegistryController.savedStateRegistry
+    override val viewModelStore: ViewModelStore get() = _viewModelStore
 
     override fun onCreate() {
         super.onCreate()
@@ -61,6 +66,7 @@ class OverlayService : Service(), LifecycleOwner, SavedStateRegistryOwner {
         overlayView = ComposeView(this).apply {
             setViewTreeLifecycleOwner(this@OverlayService)
             setViewTreeSavedStateRegistryOwner(this@OverlayService)
+            setViewTreeViewModelStoreOwner(this@OverlayService as ViewModelStoreOwner)
             setContent {
                 OverlayScreen(
                     packageName = packageName,
@@ -82,6 +88,7 @@ class OverlayService : Service(), LifecycleOwner, SavedStateRegistryOwner {
     override fun onDestroy() {
         super.onDestroy()
         lifecycleRegistry.currentState = Lifecycle.State.DESTROYED
+        _viewModelStore.clear()
         overlayView?.let { windowManager.removeView(it) }
     }
 

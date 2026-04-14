@@ -32,6 +32,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.core.net.toUri
 import com.saunaltech.mindgate.app.service.AppBlockerService
+import com.saunaltech.mindgate.app.service.SyncWorker
 
 @Composable
 fun SetupScreen(onGoToAppList: () -> Unit) {
@@ -91,6 +92,13 @@ fun SetupScreen(onGoToAppList: () -> Unit) {
             else MaterialTheme.colorScheme.error,
             style = MaterialTheme.typography.bodyMedium
         )
+
+        Button(
+            onClick = { SyncWorker.syncNow(context) },
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Text("Synchroniser les questions")
+        }
     }
 }
 
