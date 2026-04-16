@@ -16,8 +16,11 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.Button
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -35,7 +38,11 @@ import com.saunaltech.mindgate.app.service.AppBlockerService
 import com.saunaltech.mindgate.app.service.SyncWorker
 
 @Composable
-fun SetupScreen(onGoToAppList: () -> Unit) {
+fun SetupScreen(
+    onGoToAppList: () -> Unit,
+    onGoToSettings: () -> Unit,
+    onGoToDashboard: () -> Unit
+) {
     val context = LocalContext.current
     var overlayGranted by remember { mutableStateOf(false) }
     var accessibilityEnabled by remember { mutableStateOf(false) }
@@ -55,8 +62,16 @@ fun SetupScreen(onGoToAppList: () -> Unit) {
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center
     ) {
-        Text("MindGate", style = MaterialTheme.typography.headlineLarge, color = Color.White)
-        Spacer(modifier = Modifier.height(48.dp))
+        Text("MindGate", style = MaterialTheme.typography.headlineLarge)
+        Spacer(modifier = Modifier.height(8.dp))
+        Text(
+            if (overlayGranted && accessibilityEnabled) "Actif" else "Inactif",
+            color = if (overlayGranted && accessibilityEnabled)
+                MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error,
+            style = MaterialTheme.typography.bodySmall
+        )
+
+        Spacer(modifier = Modifier.height(40.dp))
 
         PermissionRow(
             label = "Affichage par-dessus les apps",
@@ -70,30 +85,30 @@ fun SetupScreen(onGoToAppList: () -> Unit) {
                 )
             }
         )
-        Spacer(modifier = Modifier.height(12.dp))
-
+        Spacer(modifier = Modifier.height(8.dp))
         PermissionRow(
             label = "Service d'accessibilité",
             isGranted = accessibilityEnabled,
             onClick = { context.startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)) }
         )
-        Spacer(modifier = Modifier.height(24.dp))
+
+        Spacer(modifier = Modifier.height(32.dp))
+        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+        Spacer(modifier = Modifier.height(32.dp))
 
         Button(onClick = onGoToAppList, modifier = Modifier.fillMaxWidth()) {
-            Text("Choisir les apps à bloquer")
+            Text("Apps à bloquer")
         }
-        Spacer(modifier = Modifier.height(24.dp))
-
-        Text(
-            text = if (overlayGranted && accessibilityEnabled) "MindGate est actif"
-            else "Active les deux permissions pour démarrer",
-            color = if (overlayGranted && accessibilityEnabled)
-                MaterialTheme.colorScheme.primary
-            else MaterialTheme.colorScheme.error,
-            style = MaterialTheme.typography.bodyMedium
-        )
-
-        Button(
+        Spacer(modifier = Modifier.height(12.dp))
+        Button(onClick = onGoToSettings, modifier = Modifier.fillMaxWidth()) {
+            Text("Paramètres (langue & thèmes)")
+        }
+        Spacer(modifier = Modifier.height(12.dp))
+        OutlinedButton(onClick = onGoToDashboard, modifier = Modifier.fillMaxWidth()) {
+            Text("Dashboard")
+        }
+        Spacer(modifier = Modifier.height(12.dp))
+        OutlinedButton(
             onClick = { SyncWorker.syncNow(context) },
             modifier = Modifier.fillMaxWidth()
         ) {
@@ -116,17 +131,19 @@ fun PermissionRow(label: String, isGranted: Boolean, onClick: () -> Unit) {
                 .size(12.dp)
                 .background(
                     color = if (isGranted) Color(0xFF4CAF50) else Color(0xFFF44336),
-                    shape = androidx.compose.foundation.shape.CircleShape
+                    shape = CircleShape
                 )
         )
         Spacer(modifier = Modifier.width(12.dp))
         Text(
-            text = label, modifier = Modifier.weight(1f),
+            text = label,
+            modifier = Modifier.weight(1f),
             style = MaterialTheme.typography.bodyLarge
         )
         if (!isGranted) {
             Text(
-                "Configurer", color = MaterialTheme.colorScheme.primary,
+                text = "Configurer",
+                color = MaterialTheme.colorScheme.primary,
                 style = MaterialTheme.typography.bodySmall
             )
         }
@@ -136,7 +153,8 @@ fun PermissionRow(label: String, isGranted: Boolean, onClick: () -> Unit) {
 fun isAccessibilityServiceEnabled(context: Context): Boolean {
     val service = "${context.packageName}/${AppBlockerService::class.java.canonicalName}"
     val enabledServices = Settings.Secure.getString(
-        context.contentResolver, Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES
+        context.contentResolver,
+        Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES
     ) ?: return false
     return enabledServices.contains(service)
 }

@@ -6,12 +6,12 @@ import androidx.room.PrimaryKey
 @Entity(tableName = "questions")
 data class QuestionEntity(
     @PrimaryKey val id: Long,
-    val theme: String,
+    val themeId: Long,
     val enonce: String,
     val reponses: String,
     val bonneReponse: Int,
     val difficulte: Int,
-    val version: Int,
-    val actif: Boolean,
-    val explication: String = ""
+    val explication: String,
+    val langue: String,
+    val actif: Boolean
 )

@@ -6,6 +6,8 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
+import com.saunaltech.mindgate.app.data.db.MindGateDatabase
+import com.saunaltech.mindgate.app.data.db.entity.QuizResultEntity
 import com.saunaltech.mindgate.app.data.preferences.MindGatePreferences
 import com.saunaltech.mindgate.app.data.repository.QuestionRepository
 import com.saunaltech.mindgate.app.model.QuizQuestion
@@ -18,94 +20,134 @@ class QuizViewModel(context: Context) : ViewModel() {
 
     private val repository = QuestionRepository(context)
     private val prefs = MindGatePreferences(context)
+    private val quizResultDao = MindGateDatabase.getInstance(context).quizResultDao()
 
     private val _state = MutableStateFlow<QuizState>(QuizState.Loading)
     val state: StateFlow<QuizState> = _state
 
-    private var questions = listOf<QuizQuestion>()
-    private var currentIndex = 0
-    private var correctAnswers = 0
+    // Pool de questions disponibles (on pioche dedans)
+    private var questionPool = listOf<QuizQuestion>()
 
-    fun loadQuestions() {
+    // Questions déjà posées dans cette session (pour éviter les répétitions)
+    private val askedIds = mutableSetOf<Long>()
+
+    private var streak = 0
+    private val required = 3       // configurable plus tard par app
+    private var totalAnswered = 0
+    private var totalCorrect = 0
+    private var currentPackage = ""
+
+    fun loadQuestions(packageName: String = "") {
+        currentPackage = packageName
         viewModelScope.launch {
-            val themes = prefs.loadActiveThemes()
-            val entities = repository.getQuestionsForQuiz(themes)
+            val langue = prefs.loadLangue()
+            val themeIds = prefs.loadActiveThemeIds()
+            val entities = repository.getQuestionsForQuiz(langue, themeIds, limit = 50)
 
             if (entities.isEmpty()) {
                 _state.value = QuizState.NoQuestions
                 return@launch
             }
 
-            questions = entities
-                .shuffled()
-                .take(5)
-                .map { entity ->
-                    val reponses: List<String> = Gson().fromJson(
-                        entity.reponses,
-                        object : TypeToken<List<String>>() {}.type
-                    )
-                    QuizQuestion(
-                        id = entity.id,
-                        enonce = entity.enonce,
-                        reponses = reponses,
-                        bonneReponse = entity.bonneReponse,
-                        explication = entity.explication
-                    )
-                }
+            questionPool = entities.map { entity ->
+                val reponses: List<String> = Gson().fromJson(
+                    entity.reponses,
+                    object : TypeToken<List<String>>() {}.type
+                )
+                QuizQuestion(
+                    id = entity.id,
+                    enonce = entity.enonce,
+                    reponses = reponses,
+                    bonneReponse = entity.bonneReponse,
+                    explication = entity.explication
+                )
+            }.shuffled()
 
-            currentIndex = 0
-            correctAnswers = 0
-            showCurrentQuestion()
+            streak = 0
+            totalAnswered = 0
+            totalCorrect = 0
+            askedIds.clear()
+
+            showNextQuestion()
         }
     }
 
     fun answerQuestion(selectedIndex: Int) {
-        val current = questions.getOrNull(currentIndex) ?: return
-        val isCorrect = selectedIndex == current.bonneReponse
-        val isLast = currentIndex == questions.size - 1
+        val current = (state.value as? QuizState.Question)?.question ?: return
+        val isCorrect = (selectedIndex + 1) == current.bonneReponse
 
-        if (isCorrect) correctAnswers++
+        totalAnswered++
+        if (isCorrect) {
+            totalCorrect++
+            streak++
+        } else {
+            streak = 0
+        }
+
+        val isGranted = streak >= required
 
         _state.value = QuizState.Feedback(
             question = current,
             selectedIndex = selectedIndex,
             isCorrect = isCorrect,
-            current = currentIndex + 1,
-            total = questions.size,
-            isLast = isLast
+            streak = streak,
+            required = required,
+            isGranted = isGranted
         )
+
+        if (isGranted) {
+            saveResult(granted = true)
+        }
     }
 
     fun nextQuestion() {
         val feedback = _state.value as? QuizState.Feedback ?: return
 
-        if (feedback.isLast) {
-            // Accès accordé uniquement si la dernière réponse est correcte
-            if (feedback.isCorrect) {
-                _state.value = QuizState.Granted(correctAnswers, questions.size)
-            } else {
-                _state.value = QuizState.Denied
-            }
+        if (feedback.isGranted) {
+            _state.value = QuizState.Granted
             return
         }
 
-        currentIndex++
-        showCurrentQuestion()
+        showNextQuestion()
     }
 
-    fun retry() {
-        currentIndex = 0
-        correctAnswers = 0
-        questions = questions.shuffled()
-        showCurrentQuestion()
-    }
+    private fun showNextQuestion() {
+        // Prend une question pas encore posée
+        val next = questionPool
+            .filter { it.id !in askedIds }
+            .randomOrNull()
+            ?: run {
+                // Toutes les questions ont été posées, on recharge le pool
+                askedIds.clear()
+                questionPool.randomOrNull()
+            }
 
-    private fun showCurrentQuestion() {
+        if (next == null) {
+            _state.value = QuizState.NoQuestions
+            return
+        }
+
+        askedIds.add(next.id)
+
         _state.value = QuizState.Question(
-            question = questions[currentIndex],
-            current = currentIndex + 1,
-            total = questions.size
+            question = next,
+            streak = streak,
+            required = required
         )
+    }
+
+    private fun saveResult(granted: Boolean) {
+        viewModelScope.launch {
+            quizResultDao.insert(
+                QuizResultEntity(
+                    appPackage = currentPackage,
+                    date = System.currentTimeMillis(),
+                    totalQuestions = totalAnswered,
+                    correctAnswers = totalCorrect,
+                    accessGranted = granted
+                )
+            )
+        }
     }
 
     class Factory(private val context: Context) : ViewModelProvider.Factory {

@@ -4,20 +4,23 @@ import android.content.Context
 import androidx.room.Database
 import androidx.room.Room
 import androidx.room.RoomDatabase
-import com.saunaltech.mindgate.app.data.db.dao.PackVersionDao
 import com.saunaltech.mindgate.app.data.db.dao.QuestionDao
-import com.saunaltech.mindgate.app.data.db.entity.PackVersionEntity
+import com.saunaltech.mindgate.app.data.db.dao.QuizResultDao
+import com.saunaltech.mindgate.app.data.db.dao.ThemeDao
 import com.saunaltech.mindgate.app.data.db.entity.QuestionEntity
+import com.saunaltech.mindgate.app.data.db.entity.QuizResultEntity
+import com.saunaltech.mindgate.app.data.db.entity.ThemeEntity
 
 @Database(
-    entities = [QuestionEntity::class, PackVersionEntity::class],
-    version = 2,
+    entities = [QuestionEntity::class, ThemeEntity::class, QuizResultEntity::class],
+    version = 4,
     exportSchema = false
 )
 abstract class MindGateDatabase : RoomDatabase() {
 
     abstract fun questionDao(): QuestionDao
-    abstract fun packVersionDao(): PackVersionDao
+    abstract fun themeDao(): ThemeDao
+    abstract fun quizResultDao(): QuizResultDao
 
     companion object {
         @Volatile
@@ -29,7 +32,9 @@ abstract class MindGateDatabase : RoomDatabase() {
                     context.applicationContext,
                     MindGateDatabase::class.java,
                     "mindgate.db"
-                ).fallbackToDestructiveMigration().build().also { INSTANCE = it }
+                )
+                    .fallbackToDestructiveMigration()
+                    .build().also { INSTANCE = it }
             }
         }
     }

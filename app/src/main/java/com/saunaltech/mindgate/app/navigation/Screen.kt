@@ -6,11 +6,15 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import com.saunaltech.mindgate.app.ui.applist.AppListScreen
+import com.saunaltech.mindgate.app.ui.dashboard.DashboardScreen
+import com.saunaltech.mindgate.app.ui.settings.SettingsScreen
 import com.saunaltech.mindgate.app.ui.setup.SetupScreen
 
 sealed class Screen {
     object Setup : Screen()
     object AppList : Screen()
+    object Settings : Screen()
+    object Dashboard : Screen()
 }
 
 @Composable
@@ -19,10 +23,20 @@ fun MindGateNavigation() {
 
     when (currentScreen) {
         Screen.Setup -> SetupScreen(
-            onGoToAppList = { currentScreen = Screen.AppList }
+            onGoToAppList = { currentScreen = Screen.AppList },
+            onGoToSettings = { currentScreen = Screen.Settings },
+            onGoToDashboard = { currentScreen = Screen.Dashboard }
         )
 
         Screen.AppList -> AppListScreen(
+            onBack = { currentScreen = Screen.Setup }
+        )
+
+        Screen.Settings -> SettingsScreen(
+            onBack = { currentScreen = Screen.Setup }
+        )
+
+        Screen.Dashboard -> DashboardScreen(
             onBack = { currentScreen = Screen.Setup }
         )
     }

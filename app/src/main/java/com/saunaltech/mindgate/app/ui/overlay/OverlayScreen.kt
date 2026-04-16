@@ -1,13 +1,17 @@
 package com.saunaltech.mindgate.app.ui.overlay
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
@@ -18,7 +22,6 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -26,6 +29,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -42,14 +46,14 @@ fun OverlayScreen(packageName: String, onDismiss: () -> Unit) {
     val viewModel: QuizViewModel = viewModel(factory = QuizViewModel.Factory(context))
     val state by viewModel.state.collectAsState()
 
-    LaunchedEffect(Unit) { viewModel.loadQuestions() }
+    LaunchedEffect(Unit) { viewModel.loadQuestions(packageName) }
 
     Box(
         modifier = Modifier
             .fillMaxSize()
             .background(Color(0xF01A1A2E))
     ) {
-        // Croix en haut à droite
+        // Croix — passer le quiz
         IconButton(
             onClick = {
                 AppBlockerService.unlockedSessions.add(packageName)
@@ -62,18 +66,14 @@ fun OverlayScreen(packageName: String, onDismiss: () -> Unit) {
             Icon(
                 imageVector = Icons.Default.Close,
                 contentDescription = "Passer",
-                tint = Color(0xFF888888)
+                tint = Color(0xFF555555)
             )
         }
 
-        // Contenu centré
-        Box(
-            modifier = Modifier.fillMaxSize(),
-            contentAlignment = Alignment.Center
-        ) {
+        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
             when (val s = state) {
                 is QuizState.Loading -> LoadingContent()
-                is QuizState.NoQuestions -> NoQuestionsContent(onDismiss, packageName)
+                is QuizState.NoQuestions -> NoQuestionsContent(packageName, onDismiss)
                 is QuizState.Question -> QuestionContent(
                     state = s,
                     onAnswer = { viewModel.answerQuestion(it) }
@@ -85,18 +85,15 @@ fun OverlayScreen(packageName: String, onDismiss: () -> Unit) {
                 )
 
                 is QuizState.Granted -> GrantedContent(
-                    state = s,
                     packageName = packageName,
                     onDismiss = onDismiss
-                )
-
-                is QuizState.Denied -> DeniedContent(
-                    onRetry = { viewModel.retry() }
                 )
             }
         }
     }
 }
+
+// --- Loading ---
 
 @Composable
 private fun LoadingContent() {
@@ -107,8 +104,10 @@ private fun LoadingContent() {
     }
 }
 
+// --- Pas de questions ---
+
 @Composable
-private fun NoQuestionsContent(onDismiss: () -> Unit, packageName: String) {
+private fun NoQuestionsContent(packageName: String, onDismiss: () -> Unit) {
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
         modifier = Modifier.padding(32.dp)
@@ -130,6 +129,8 @@ private fun NoQuestionsContent(onDismiss: () -> Unit, packageName: String) {
     }
 }
 
+// --- Question ---
+
 @Composable
 private fun QuestionContent(
     state: QuizState.Question,
@@ -142,18 +143,14 @@ private fun QuestionContent(
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
         Text("MindGate", color = Color.White, fontSize = 22.sp, fontWeight = FontWeight.Bold)
-        Spacer(modifier = Modifier.height(8.dp))
+        Spacer(modifier = Modifier.height(16.dp))
 
-        LinearProgressIndicator(
-            progress = { state.current.toFloat() / state.total.toFloat() },
-            modifier = Modifier.fillMaxWidth(),
-            color = Color(0xFF7C4DFF),
-            trackColor = Color(0xFF3D3D5C)
-        )
-        Spacer(modifier = Modifier.height(4.dp))
-        Text("${state.current} / ${state.total}", color = Color(0xFFAAAAAA), fontSize = 12.sp)
+        // Indicateur de streak
+        StreakIndicator(streak = state.streak, required = state.required)
+
         Spacer(modifier = Modifier.height(24.dp))
 
+        // Question
         Card(
             modifier = Modifier.fillMaxWidth(),
             shape = RoundedCornerShape(16.dp),
@@ -170,6 +167,7 @@ private fun QuestionContent(
 
         Spacer(modifier = Modifier.height(20.dp))
 
+        // Réponses
         state.question.reponses.forEachIndexed { index, reponse ->
             Button(
                 onClick = { onAnswer(index) },
@@ -185,6 +183,8 @@ private fun QuestionContent(
     }
 }
 
+// --- Feedback ---
+
 @Composable
 private fun FeedbackContent(
     state: QuizState.Feedback,
@@ -196,7 +196,6 @@ private fun FeedbackContent(
             .padding(24.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        // Résultat de la réponse
         Text(
             text = if (state.isCorrect) "Bonne réponse !" else "Mauvaise réponse",
             color = if (state.isCorrect) Color(0xFF4CAF50) else Color(0xFFF44336),
@@ -204,23 +203,28 @@ private fun FeedbackContent(
             fontWeight = FontWeight.Bold
         )
 
-        Spacer(modifier = Modifier.height(16.dp))
-
-        // Rappel de la question
-        Text(
-            text = state.question.enonce,
-            color = Color(0xFFAAAAAA),
-            fontSize = 14.sp,
-            textAlign = TextAlign.Center
-        )
-
         Spacer(modifier = Modifier.height(12.dp))
 
-        // Réponses avec couleurs
+        // Streak mis à jour
+        StreakIndicator(streak = state.streak, required = state.required)
+
+        if (!state.isCorrect) {
+            Spacer(modifier = Modifier.height(8.dp))
+            Text(
+                "Série remise à zéro",
+                color = Color(0xFFF44336),
+                fontSize = 13.sp
+            )
+        }
+
+        Spacer(modifier = Modifier.height(16.dp))
+
+        // Réponses colorées
         state.question.reponses.forEachIndexed { index, reponse ->
             val bgColor = when (index) {
-                state.question.bonneReponse -> Color(0xFF2E7D32)
+                state.question.bonneReponse - 1 -> Color(0xFF2E7D32)
                 state.selectedIndex -> if (!state.isCorrect) Color(0xFFC62828) else Color(0xFF2A2A4A)
+
                 else -> Color(0xFF2A2A4A)
             }
             Button(
@@ -239,10 +243,9 @@ private fun FeedbackContent(
             }
         }
 
-        Spacer(modifier = Modifier.height(16.dp))
-
         // Explication
         if (state.question.explication.isNotBlank()) {
+            Spacer(modifier = Modifier.height(12.dp))
             Card(
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(12.dp),
@@ -260,42 +263,23 @@ private fun FeedbackContent(
 
         Spacer(modifier = Modifier.height(20.dp))
 
-        // Message si dernière question et mauvaise réponse
-        if (state.isLast && !state.isCorrect) {
-            Text(
-                text = "La dernière réponse doit être correcte pour accéder à l'app",
-                color = Color(0xFFF44336),
-                fontSize = 13.sp,
-                textAlign = TextAlign.Center
-            )
-            Spacer(modifier = Modifier.height(12.dp))
-        }
-
         Button(
             onClick = onNext,
             modifier = Modifier.fillMaxWidth(),
             colors = ButtonDefaults.buttonColors(
-                containerColor = if (state.isLast && !state.isCorrect)
-                    Color(0xFF7C4DFF) else Color(0xFF4CAF50)
+                containerColor = if (state.isGranted) Color(0xFF4CAF50)
+                else Color(0xFF7C4DFF)
             )
         ) {
-            Text(
-                text = when {
-                    state.isLast && state.isCorrect -> "Accéder à l'app"
-                    state.isLast && !state.isCorrect -> "Réessayer"
-                    else -> "Question suivante"
-                }
-            )
+            Text(if (state.isGranted) "Accéder à l'app" else "Question suivante")
         }
     }
 }
 
+// --- Accordé ---
+
 @Composable
-private fun GrantedContent(
-    state: QuizState.Granted,
-    packageName: String,
-    onDismiss: () -> Unit
-) {
+private fun GrantedContent(packageName: String, onDismiss: () -> Unit) {
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -303,16 +287,8 @@ private fun GrantedContent(
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
         Text(
-            "Accès accordé !",
-            color = Color(0xFF4CAF50),
-            fontSize = 32.sp,
+            "Accès accordé !", color = Color(0xFF4CAF50), fontSize = 32.sp,
             fontWeight = FontWeight.Bold
-        )
-        Spacer(modifier = Modifier.height(16.dp))
-        Text(
-            "${state.correctAnswers} / ${state.total} bonnes réponses",
-            color = Color.White,
-            fontSize = 18.sp
         )
         Spacer(modifier = Modifier.height(32.dp))
         Button(
@@ -328,33 +304,29 @@ private fun GrantedContent(
     }
 }
 
+// --- Indicateur de streak ---
+
 @Composable
-private fun DeniedContent(onRetry: () -> Unit) {
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(32.dp),
-        horizontalAlignment = Alignment.CenterHorizontally
-    ) {
+private fun StreakIndicator(streak: Int, required: Int) {
+    Column(horizontalAlignment = Alignment.CenterHorizontally) {
         Text(
-            "Accès refusé",
-            color = Color(0xFFF44336),
-            fontSize = 32.sp,
-            fontWeight = FontWeight.Bold
-        )
-        Spacer(modifier = Modifier.height(16.dp))
-        Text(
-            "Tu dois répondre correctement à la dernière question",
+            "$streak / $required bonnes réponses consécutives",
             color = Color(0xFFAAAAAA),
-            textAlign = TextAlign.Center
+            fontSize = 13.sp
         )
-        Spacer(modifier = Modifier.height(32.dp))
-        Button(
-            onClick = onRetry,
-            modifier = Modifier.fillMaxWidth(),
-            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF7C4DFF))
-        ) {
-            Text("Réessayer")
+        Spacer(modifier = Modifier.height(8.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            repeat(required) { index ->
+                Box(
+                    modifier = Modifier
+                        .size(16.dp)
+                        .clip(CircleShape)
+                        .background(
+                            if (index < streak) Color(0xFF4CAF50)
+                            else Color(0xFF3D3D5C)
+                        )
+                )
+            }
         }
     }
 }

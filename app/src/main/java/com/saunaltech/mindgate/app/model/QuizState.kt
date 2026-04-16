@@ -6,19 +6,18 @@ sealed class QuizState {
 
     data class Question(
         val question: QuizQuestion,
-        val current: Int,
-        val total: Int
+        val streak: Int,
+        val required: Int
     ) : QuizState()
 
     data class Feedback(
         val question: QuizQuestion,
         val selectedIndex: Int,
         val isCorrect: Boolean,
-        val current: Int,
-        val total: Int,
-        val isLast: Boolean
+        val streak: Int,
+        val required: Int,
+        val isGranted: Boolean
     ) : QuizState()
 
-    data class Granted(val correctAnswers: Int, val total: Int) : QuizState()
-    object Denied : QuizState()
+    object Granted : QuizState()
 }
