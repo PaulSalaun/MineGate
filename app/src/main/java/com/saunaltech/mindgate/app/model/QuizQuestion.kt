@@ -5,5 +5,6 @@ data class QuizQuestion(
     val enonce: String,
     val reponses: List<String>,
     val bonneReponse: Int,
-    val explication: String = ""
+    val explication: String = "",
+    val difficulty: Int = 1          // Niveau 1–5
 )

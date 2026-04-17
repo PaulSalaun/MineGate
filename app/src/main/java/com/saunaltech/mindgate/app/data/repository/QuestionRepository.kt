@@ -15,6 +15,7 @@ class QuestionRepository(private val context: Context) {
     private val themeDao = db.themeDao()
     private val api = RetrofitClient.create(SupabaseConfig.BASE_URL)
 
+    /** Récupère des questions pour un quiz sans filtre de difficulté (comportement legacy). */
     suspend fun getQuestionsForQuiz(
         langue: String,
         themeIds: List<Long> = emptyList(),
@@ -27,14 +28,29 @@ class QuestionRepository(private val context: Context) {
         }
     }
 
+    /**
+     * Récupère des questions pour un quiz avec un filtre de difficulté précis.
+     * Utilisé par [QuizViewModel] pour respecter la [QuizConfig].
+     */
+    suspend fun getQuestionsForQuizByDifficulty(
+        langue: String,
+        themeIds: List<Long> = emptyList(),
+        difficulty: Int,
+        limit: Int = 5
+    ): List<QuestionEntity> {
+        return if (themeIds.isEmpty()) {
+            questionDao.getQuestionsByDifficulty(langue, difficulty, limit)
+        } else {
+            questionDao.getQuestionsByDifficultyAndThemes(langue, difficulty, themeIds, limit)
+        }
+    }
+
     suspend fun syncIfNeeded(): SyncResult {
         if (!isNetworkAvailable()) return SyncResult.NoNetwork
 
         return try {
-            // Récupère le dernier id local
             val localLastId = questionDao.getLastId() ?: 0L
 
-            // Récupère le dernier id distant
             val remoteLastList = api.getMaxId(
                 apiKey = SupabaseConfig.ANON_KEY,
                 authorization = SupabaseConfig.AUTHORIZATION
@@ -43,14 +59,12 @@ class QuestionRepository(private val context: Context) {
 
             if (remoteLastId <= localLastId) return SyncResult.AlreadyUpToDate
 
-            // Télécharge les nouvelles questions
             val newQuestions = api.getNewQuestions(
                 apiKey = SupabaseConfig.ANON_KEY,
                 authorization = SupabaseConfig.AUTHORIZATION,
                 idFilter = "gt.$localLastId"
             )
 
-            // Télécharge tous les thèmes
             val themes = api.getAllThemes(
                 apiKey = SupabaseConfig.ANON_KEY,
                 authorization = SupabaseConfig.AUTHORIZATION
