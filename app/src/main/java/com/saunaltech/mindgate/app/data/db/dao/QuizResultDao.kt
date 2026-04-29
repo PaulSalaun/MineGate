@@ -24,11 +24,15 @@ interface QuizResultDao {
     suspend fun getTotalGranted(): Int
 
     @Query("SELECT SUM(correctAnswers) FROM quiz_results")
-    suspend fun getTotalCorrect(): Int
+    suspend fun getTotalCorrect(): Int?
 
     @Query("SELECT SUM(totalQuestions) FROM quiz_results")
-    suspend fun getTotalQuestions(): Int
+    suspend fun getTotalQuestions(): Int?
 
     @Query("SELECT * FROM quiz_results ORDER BY date DESC LIMIT 20")
     suspend fun getRecent(): List<QuizResultEntity>
 }
+
+// Note: Les stats par difficulté et par thème sont calculées côté ViewModel
+// à partir des QuizResultEntity combinées avec les QuestionEntity via QuestionDao.
+// Voir MainViewModel pour l'implémentation.

@@ -8,6 +8,9 @@ import com.saunaltech.mindgate.app.data.db.entity.ThemeEntity
 @Dao
 interface ThemeDao {
 
+    @Query("SELECT * FROM themes")
+    suspend fun getAll(): List<ThemeEntity>
+
     @Query("SELECT * FROM themes WHERE langue = :langue ORDER BY nom ASC")
     suspend fun getThemesByLangue(langue: String): List<ThemeEntity>
 

@@ -14,7 +14,6 @@ interface QuestionDao {
     @Query("SELECT * FROM questions WHERE actif = 1 AND langue = :langue ORDER BY RANDOM() LIMIT :limit")
     suspend fun getQuestionsByLangue(langue: String, limit: Int): List<QuestionEntity>
 
-    /** Filtre par difficulté exacte, sans contrainte de thème. */
     @Query("SELECT * FROM questions WHERE actif = 1 AND langue = :langue AND difficulte = :difficulty ORDER BY RANDOM() LIMIT :limit")
     suspend fun getQuestionsByDifficulty(
         langue: String,
@@ -22,7 +21,6 @@ interface QuestionDao {
         limit: Int
     ): List<QuestionEntity>
 
-    /** Filtre par difficulté exacte ET thèmes sélectionnés. */
     @Query("SELECT * FROM questions WHERE actif = 1 AND langue = :langue AND difficulte = :difficulty AND themeId IN (:themeIds) ORDER BY RANDOM() LIMIT :limit")
     suspend fun getQuestionsByDifficultyAndThemes(
         langue: String,
@@ -39,4 +37,10 @@ interface QuestionDao {
 
     @Query("SELECT COUNT(*) FROM questions WHERE actif = 1")
     suspend fun getCount(): Int
+
+    @Query("SELECT COUNT(*) FROM questions WHERE actif = 1 AND difficulte = :difficulty")
+    suspend fun getCountByDifficulty(difficulty: Int): Int
+
+    @Query("SELECT COUNT(*) FROM questions WHERE actif = 1 AND themeId = :themeId")
+    suspend fun getCountByTheme(themeId: Long): Int
 }
