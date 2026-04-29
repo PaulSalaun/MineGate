@@ -27,32 +27,37 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.saunaltech.mindgate.app.ui.overlay.OverlayScreen
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Tokens
+// Design tokens
 // ─────────────────────────────────────────────────────────────────────────────
 
 private val BgDeep = Color(0xFF0F0E1A)
 private val BgCard = Color(0xFF1E1D30)
-private val BgCard2 = Color(0xFF161525)
 private val BgBorder = Color(0xFF2A2840)
+private val BgGrid = Color(0xFF232235)
 private val MgPrimary = Color(0xFF4F46E5)
-private val MgPrimaryDim = Color(0x1A4F46E5)
-private val MgSecondary = Color(0xFFFACC15)
 private val TextPrimary = Color.White
 private val TextSecondary = Color(0x99FFFFFF)
 private val TextHint = Color(0x59FFFFFF)
 
 private val DiffColors = listOf(
-    Color(0xFF22C55E), Color(0xFF84CC16),
-    Color(0xFFF59E0B), Color(0xFFEF4444), Color(0xFF8B5CF6)
+    Color(0xFF22C55E),  // 1 Novice
+    Color(0xFF84CC16),  // 2 Initié
+    Color(0xFFF59E0B),  // 3 Moyen
+    Color(0xFFEF4444),  // 4 Avancé
+    Color(0xFF8B5CF6)   // 5 Expert
 )
 private val DiffLabels = listOf("Novice", "Initié", "Moyen", "Avancé", "Expert")
 
@@ -70,8 +75,7 @@ fun MainScreen() {
     LaunchedEffect(Unit) { vm.loadDashboard() }
 
     if (showFreeQuiz) {
-        // Quiz libre (sans package cible)
-        OverlayScreen(packageName = "__free_quiz__", onDismiss = { showFreeQuiz = false })
+        OverlayScreen(packageName = "__free_quiz__", onDismiss = { })
         return
     }
 
@@ -81,13 +85,12 @@ fun MainScreen() {
             .background(BgDeep)
             .verticalScroll(rememberScrollState())
     ) {
-        // ── Top bar ───────────────────────────────────────────────────────────
+        // ── Header ────────────────────────────────────────────────────────────
         Row(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(horizontal = 20.dp, vertical = 18.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween
+            verticalAlignment = Alignment.CenterVertically
         ) {
             Column {
                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -109,16 +112,16 @@ fun MainScreen() {
         }
 
         // ── Bouton quiz libre ─────────────────────────────────────────────────
-        Box(modifier = Modifier.padding(horizontal = 20.dp)) {
-            Button(
-                onClick = { showFreeQuiz = true },
-                modifier = Modifier.fillMaxWidth(),
-                colors = ButtonDefaults.buttonColors(containerColor = MgPrimary),
-                shape = RoundedCornerShape(14.dp),
-                contentPadding = androidx.compose.foundation.layout.PaddingValues(vertical = 14.dp)
-            ) {
-                Text("▶  Lancer un quiz libre", fontSize = 14.sp, fontWeight = FontWeight.Medium)
-            }
+        Button(
+            onClick = { },
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 20.dp),
+            colors = ButtonDefaults.buttonColors(containerColor = MgPrimary),
+            shape = RoundedCornerShape(14.dp),
+            contentPadding = androidx.compose.foundation.layout.PaddingValues(vertical = 14.dp)
+        ) {
+            Text("▶  Lancer un quiz libre", fontSize = 14.sp, fontWeight = FontWeight.Medium)
         }
 
         Spacer(Modifier.height(20.dp))
@@ -130,26 +133,46 @@ fun MainScreen() {
                 .padding(horizontal = 20.dp),
             horizontalArrangement = Arrangement.spacedBy(10.dp)
         ) {
-            StatCard(Modifier.weight(1f), "${data.totalQuizzes}", "Quiz passés")
             StatCard(
-                Modifier.weight(1f),
-                "${(data.accessRate * 100).toInt()}%",
-                "Taux d'accès",
-                color = Color(0xFF22C55E)
+                modifier = Modifier.weight(1f),
+                value = "${data.totalQuizzes}",
+                label = "Quiz passés"
             )
             StatCard(
-                Modifier.weight(1f),
-                "${(data.correctRate * 100).toInt()}%",
-                "Réponses ok",
-                color = MgPrimary
+                modifier = Modifier.weight(1f),
+                value = if (data.totalQuizzes > 0) "${(data.accessRate * 100).toInt()}%" else "—",
+                label = "Taux d'accès",
+                valueColor = Color(0xFF22C55E)
+            )
+            StatCard(
+                modifier = Modifier.weight(1f),
+                value = if (data.totalQuizzes > 0) "${(data.correctRate * 100).toInt()}%" else "—",
+                label = "Réponses ok",
+                valueColor = MgPrimary
             )
         }
 
-        Spacer(Modifier.height(24.dp))
+        Spacer(Modifier.height(26.dp))
 
-        // ── Graphique en barres — réussite par difficulté ─────────────────────
-        SectionTitle("Réussite par difficulté", modifier = Modifier.padding(horizontal = 20.dp))
-        Spacer(Modifier.height(10.dp))
+        // ── Graphique distribution par difficulté ─────────────────────────────
+        SectionTitle(
+            text = if (data.totalQuizzes == 0)
+                "Questions disponibles par niveau"
+            else
+                "Questions disponibles par niveau",
+            modifier = Modifier.padding(horizontal = 20.dp)
+        )
+
+        Spacer(Modifier.height(4.dp))
+
+        Text(
+            text = "Basé sur la bibliothèque de questions synchronisée",
+            color = TextHint,
+            fontSize = 10.sp,
+            modifier = Modifier.padding(horizontal = 20.dp)
+        )
+
+        Spacer(Modifier.height(12.dp))
 
         Box(
             modifier = Modifier
@@ -158,29 +181,49 @@ fun MainScreen() {
                 .clip(RoundedCornerShape(16.dp))
                 .background(BgCard)
                 .border(0.5.dp, BgBorder, RoundedCornerShape(16.dp))
-                .padding(16.dp)
+                .padding(top = 16.dp, start = 12.dp, end = 12.dp, bottom = 12.dp)
         ) {
-            Column {
-                DifficultyBarChart(data.diffStats)
-                Spacer(Modifier.height(8.dp))
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween
+            if (data.isLoaded) {
+                DifficultyBarChart(stats = data.diffStats)
+            } else {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(120.dp),
+                    contentAlignment = Alignment.Center
                 ) {
-                    Text("Novice", color = TextHint, fontSize = 9.sp)
-                    Text("% de bonnes réponses estimé", color = TextHint, fontSize = 9.sp)
-                    Text("Expert", color = TextHint, fontSize = 9.sp)
+                    Text("Chargement…", color = TextHint, fontSize = 12.sp)
                 }
             }
         }
 
-        Spacer(Modifier.height(24.dp))
+        Spacer(Modifier.height(26.dp))
 
-        // ── Podium des thèmes ─────────────────────────────────────────────────
+        // ── Top thèmes ────────────────────────────────────────────────────────
         SectionTitle("Top thèmes", modifier = Modifier.padding(horizontal = 20.dp))
-        Spacer(Modifier.height(10.dp))
 
-        if (data.topThemes.isEmpty()) {
+        Spacer(Modifier.height(4.dp))
+
+        Text(
+            text = "Thèmes avec le plus de questions disponibles",
+            color = TextHint,
+            fontSize = 10.sp,
+            modifier = Modifier.padding(horizontal = 20.dp)
+        )
+
+        Spacer(Modifier.height(12.dp))
+
+        if (!data.isLoaded) {
+            // Skeleton
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 20.dp)
+                    .height(80.dp)
+                    .clip(RoundedCornerShape(14.dp))
+                    .background(BgCard)
+            )
+        } else if (data.topThemes.isEmpty()) {
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -192,11 +235,11 @@ fun MainScreen() {
                 contentAlignment = Alignment.Center
             ) {
                 Text(
-                    "Aucun thème disponible.\nSynchronise les questions depuis les paramètres.",
+                    "Aucun thème disponible.\nSynchronise les questions depuis Paramètres.",
                     color = TextHint,
                     fontSize = 13.sp,
                     lineHeight = 20.sp,
-                    textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                    textAlign = TextAlign.Center
                 )
             }
         } else {
@@ -211,10 +254,10 @@ fun MainScreen() {
                         modifier = Modifier.weight(1f),
                         rank = idx + 1,
                         name = theme.themeName,
-                        pct = (theme.successRate * 100).toInt()
+                        count = theme.questionCount
                     )
                 }
-                // Remplir si < 3 thèmes
+                // Espaces vides si < 3
                 repeat(3 - data.topThemes.size) {
                     Spacer(Modifier.weight(1f))
                 }
@@ -242,7 +285,12 @@ private fun SectionTitle(text: String, modifier: Modifier = Modifier) {
 }
 
 @Composable
-private fun StatCard(modifier: Modifier, value: String, label: String, color: Color = TextPrimary) {
+private fun StatCard(
+    modifier: Modifier,
+    value: String,
+    label: String,
+    valueColor: Color = TextPrimary
+) {
     Column(
         modifier = modifier
             .clip(RoundedCornerShape(12.dp))
@@ -251,81 +299,153 @@ private fun StatCard(modifier: Modifier, value: String, label: String, color: Co
             .padding(horizontal = 10.dp, vertical = 12.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        Text(value, fontSize = 22.sp, fontWeight = FontWeight.Medium, color = color)
+        Text(value, fontSize = 22.sp, fontWeight = FontWeight.Medium, color = valueColor)
         Spacer(Modifier.height(2.dp))
-        Text(
-            label, fontSize = 9.sp, color = TextHint,
-            textAlign = androidx.compose.ui.text.style.TextAlign.Center
-        )
+        Text(label, fontSize = 9.sp, color = TextHint, textAlign = TextAlign.Center)
     }
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Graphique en barres — axe baseline fixe, barres qui montent
+// ─────────────────────────────────────────────────────────────────────────────
+
 @Composable
 private fun DifficultyBarChart(stats: List<DiffStat>) {
-    val maxBarHeightDp = 72.dp
+    val barAreaHeight: Dp = 90.dp
+    val gridColor = BgGrid
+    val axisColor = BgBorder
 
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(maxBarHeightDp + 24.dp),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-        verticalAlignment = Alignment.Bottom
-    ) {
-        stats.forEachIndexed { idx, stat ->
-            val color = DiffColors.getOrElse(idx) { MgPrimary }
-            val barFrac = stat.successRate.coerceIn(0f, 1f)
+    val maxCount = stats.maxOfOrNull { it.questionCount } ?: 1
+    val gridLines = listOf(0.25f, 0.5f, 0.75f, 1f)
 
-            Column(
-                modifier = Modifier.weight(1f),
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.Bottom
+    Column(modifier = Modifier.fillMaxWidth()) {
+
+        // Zone graphique : lignes de grille + barres
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(barAreaHeight)
+                // Lignes de grille horizontales dessinées via drawBehind
+                .drawBehind {
+                    val w = size.width
+                    val h = size.height
+                    gridLines.forEach { frac ->
+                        val y = h * (1f - frac)
+                        drawLine(
+                            color = gridColor,
+                            start = Offset(0f, y),
+                            end = Offset(w, y),
+                            strokeWidth = 1f
+                        )
+                    }
+                    // Axe bas (baseline)
+                    drawLine(
+                        color = axisColor,
+                        start = Offset(0f, h),
+                        end = Offset(w, h),
+                        strokeWidth = 1.5f
+                    )
+                }
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(horizontal = 4.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.Bottom   // ← barres collées à la baseline
             ) {
-                // Pourcentage au-dessus
-                Text(
-                    "${(stat.successRate * 100).toInt()}%",
-                    color = color,
-                    fontSize = 9.sp,
-                    fontWeight = FontWeight.Medium,
-                    modifier = Modifier.padding(bottom = 3.dp)
-                )
+                stats.forEachIndexed { idx, stat ->
+                    val color = DiffColors.getOrElse(idx) { MgPrimary }
+                    val fraction = if (maxCount > 0) stat.questionCount.toFloat() / maxCount else 0f
+                    val barH = (fraction * barAreaHeight.value).coerceAtLeast(2f)
 
-                // Barre
-                val barH = (barFrac * 60).coerceAtLeast(4f)
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(barH.dp)
-                        .clip(RoundedCornerShape(topStart = 5.dp, topEnd = 5.dp))
-                        .background(color.copy(alpha = 0.85f))
-                )
+                    Column(
+                        modifier = Modifier.weight(1f),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.Bottom
+                    ) {
+                        // Valeur numérique au sommet de la barre
+                        if (stat.questionCount > 0) {
+                            Text(
+                                "${stat.questionCount}",
+                                color = color,
+                                fontSize = 9.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                modifier = Modifier.padding(bottom = 2.dp)
+                            )
+                        }
+                        // Barre — part du bas, monte vers le haut
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth(0.7f)
+                                .height(barH.dp)
+                                .clip(RoundedCornerShape(topStart = 4.dp, topEnd = 4.dp))
+                                .background(color.copy(alpha = if (stat.questionCount > 0) 0.85f else 0.18f))
+                        )
+                    }
+                }
+            }
+        }
 
-                Spacer(Modifier.height(5.dp))
-
-                // Label difficulté
-                Text(
-                    DiffLabels.getOrElse(idx) { "?" }.take(3),
-                    color = TextHint,
-                    fontSize = 8.sp
-                )
+        // Axe X : labels de difficulté alignés sous chaque barre
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 4.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            stats.forEachIndexed { idx, _ ->
+                val color = DiffColors.getOrElse(idx) { MgPrimary }
+                Column(
+                    modifier = Modifier.weight(1f),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Text(
+                        "${idx + 1}",
+                        color = color,
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                    Text(
+                        DiffLabels.getOrElse(idx) { "" }.take(3),
+                        color = TextHint,
+                        fontSize = 8.sp
+                    )
+                }
             }
         }
     }
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Podium thèmes
+// ─────────────────────────────────────────────────────────────────────────────
+
 @Composable
-private fun PodiumCard(modifier: Modifier, rank: Int, name: String, pct: Int) {
-    val (borderColor, bgColor) = when (rank) {
-        1 -> Color(0xFFFACC15).copy(0.40f) to Color(0xFFFACC15).copy(0.06f)
-        2 -> Color(0xFFB0B0B0).copy(0.35f) to Color(0xFFB0B0B0).copy(0.04f)
-        3 -> Color(0xFFCD7F32).copy(0.35f) to Color(0xFFCD7F32).copy(0.04f)
-        else -> BgBorder to BgCard
+private fun PodiumCard(modifier: Modifier, rank: Int, name: String, count: Int) {
+    val (borderColor, bgColor, labelColor) = when (rank) {
+        1 -> Triple(
+            Color(0xFFFACC15).copy(alpha = 0.40f),
+            Color(0xFFFACC15).copy(alpha = 0.06f),
+            Color(0xFFFACC15)
+        )
+
+        2 -> Triple(
+            Color(0xFFB0B0B0).copy(alpha = 0.35f),
+            Color(0xFFB0B0B0).copy(alpha = 0.04f),
+            Color(0xFFB0B0B0)
+        )
+
+        3 -> Triple(
+            Color(0xFFCD7F32).copy(alpha = 0.35f),
+            Color(0xFFCD7F32).copy(alpha = 0.04f),
+            Color(0xFFCD7F32)
+        )
+
+        else -> Triple(BgBorder, BgCard, MgPrimary)
     }
     val rankEmoji = when (rank) {
         1 -> "🥇"; 2 -> "🥈"; 3 -> "🥉"; else -> "$rank"
-    }
-    val pctColor = when (rank) {
-        1 -> Color(0xFFFACC15)
-        else -> MgPrimary
     }
 
     Column(
@@ -343,14 +463,14 @@ private fun PodiumCard(modifier: Modifier, rank: Int, name: String, pct: Int) {
             color = TextSecondary,
             fontSize = 10.sp,
             fontWeight = FontWeight.Medium,
-            textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+            textAlign = TextAlign.Center,
             lineHeight = 14.sp,
             maxLines = 2
         )
         Text(
-            "$pct%",
-            color = pctColor,
-            fontSize = 13.sp,
+            "$count q.",
+            color = labelColor,
+            fontSize = 12.sp,
             fontWeight = FontWeight.SemiBold
         )
     }

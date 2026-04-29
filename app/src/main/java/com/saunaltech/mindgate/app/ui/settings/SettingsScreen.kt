@@ -26,6 +26,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -33,12 +34,22 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.net.toUri
+import com.saunaltech.mindgate.app.data.db.MindGateDatabase
+import com.saunaltech.mindgate.app.data.db.entity.ThemeEntity
 import com.saunaltech.mindgate.app.data.preferences.MindGatePreferences
 import com.saunaltech.mindgate.app.service.SyncWorker
 import com.saunaltech.mindgate.app.ui.setup.isAccessibilityServiceEnabled
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Tokens
+// ─────────────────────────────────────────────────────────────────────────────
 
 private val BgDeep = Color(0xFF0F0E1A)
 private val BgCard = Color(0xFF1E1D30)
@@ -48,17 +59,22 @@ private val MgPrimaryDim = Color(0x1A4F46E5)
 private val MgPrimaryBorder = Color(0x4D4F46E5)
 private val ColorOk = Color(0xFF22C55E)
 private val ColorWarn = Color(0xFFF59E0B)
-private val ColorErr = Color(0xFFEF4444)
 private val TextPrimary = Color.White
 private val TextSecondary = Color(0x99FFFFFF)
 private val TextHint = Color(0x59FFFFFF)
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Screen
+// ─────────────────────────────────────────────────────────────────────────────
 
 @Composable
 fun SettingsScreen() {
     val context = LocalContext.current
     val prefs = remember { MindGatePreferences(context) }
+    val db = remember { MindGateDatabase.getInstance(context) }
+    val scope = rememberCoroutineScope()
 
-    // Permissions — poolled chaque seconde
+    // ── Permissions ───────────────────────────────────────────────────────────
     var overlayGranted by remember { mutableStateOf(false) }
     var accessibilityEnabled by remember { mutableStateOf(false) }
 
@@ -70,85 +86,112 @@ fun SettingsScreen() {
         }
     }
 
+    // ── Thèmes ────────────────────────────────────────────────────────────────
+    var allThemes by remember { mutableStateOf<List<ThemeEntity>>(emptyList()) }
+    var activeThemeIds by remember { mutableStateOf<Set<Long>>(emptySet()) }
+
+    LaunchedEffect(Unit) {
+        withContext(Dispatchers.IO) {
+            allThemes = try {
+                db.themeDao().getAll()
+            } catch (_: Exception) {
+                emptyList()
+            }
+            // Par défaut tous les thèmes sont actifs si rien n'est sauvegardé
+            val saved = prefs.loadActiveThemeIds().toSet()
+            activeThemeIds = if (saved.isEmpty() && allThemes.isNotEmpty())
+                allThemes.map { it.id }.toSet()
+            else saved
+        }
+    }
+
+    // ── Langue ────────────────────────────────────────────────────────────────
+    var currentLangue by remember { mutableStateOf(prefs.loadLangue()) }
+    var showLangDrawer by remember { mutableStateOf(false) }
+
+    // ── Config quiz ───────────────────────────────────────────────────────────
+    val config = remember { prefs.loadQuizConfig() }
+
     val allGranted = overlayGranted && accessibilityEnabled
 
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(BgDeep)
-            .verticalScroll(rememberScrollState())
-    ) {
-        // Header
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 20.dp, vertical = 18.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween
-        ) {
-            Column {
-                Text(
-                    "Paramètres",
-                    color = TextPrimary,
-                    fontSize = 22.sp,
-                    fontWeight = FontWeight.Medium
-                )
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(6.dp)
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .size(6.dp)
-                            .clip(CircleShape)
-                            .background(if (allGranted) ColorOk else ColorWarn)
-                    )
-                    Text(
-                        if (allGranted) "MindGate actif" else "Configuration requise",
-                        color = if (allGranted) ColorOk else ColorWarn,
-                        fontSize = 12.sp
-                    )
-                }
-            }
-        }
+    // ── UI ────────────────────────────────────────────────────────────────────
+    Box(modifier = Modifier.fillMaxSize()) {
 
-        // ── Bannière si permissions manquantes ───────────────────────────────
-        if (!allGranted) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(BgDeep)
+                .verticalScroll(rememberScrollState())
+        ) {
+            // Header
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 20.dp)
-                    .clip(RoundedCornerShape(12.dp))
-                    .background(ColorWarn.copy(0.08f))
-                    .border(0.5.dp, ColorWarn.copy(0.25f), RoundedCornerShape(12.dp))
-                    .padding(12.dp),
+                    .padding(horizontal = 20.dp, vertical = 18.dp),
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(10.dp)
+                horizontalArrangement = Arrangement.SpaceBetween
             ) {
-                Text("⚠", fontSize = 14.sp, color = ColorWarn)
-                Text(
-                    "Des permissions sont nécessaires pour que MindGate puisse bloquer les apps et afficher le quiz.",
-                    color = ColorWarn.copy(0.85f),
-                    fontSize = 12.sp,
-                    lineHeight = 18.sp,
-                    modifier = Modifier.weight(1f)
-                )
+                Column {
+                    Text(
+                        "Paramètres",
+                        color = TextPrimary,
+                        fontSize = 22.sp,
+                        fontWeight = FontWeight.Medium
+                    )
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(6.dp)
+                                .clip(CircleShape)
+                                .background(if (allGranted) ColorOk else ColorWarn)
+                        )
+                        Text(
+                            if (allGranted) "MindGate actif" else "Configuration requise",
+                            color = if (allGranted) ColorOk else ColorWarn,
+                            fontSize = 12.sp
+                        )
+                    }
+                }
             }
-            Spacer(Modifier.height(16.dp))
-        }
 
-        // ── Section Permissions ───────────────────────────────────────────────
-        SectionLabel("Permissions", Modifier.padding(horizontal = 20.dp))
-        Spacer(Modifier.height(8.dp))
+            // Bannière si permissions manquantes
+            if (!allGranted) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 20.dp)
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(ColorWarn.copy(0.08f))
+                        .border(0.5.dp, ColorWarn.copy(0.25f), RoundedCornerShape(12.dp))
+                        .padding(12.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Text("⚠", fontSize = 14.sp, color = ColorWarn)
+                    Text(
+                        "Des permissions sont nécessaires pour que MindGate bloque les apps.",
+                        color = ColorWarn.copy(0.85f),
+                        fontSize = 12.sp,
+                        lineHeight = 18.sp,
+                        modifier = Modifier.weight(1f)
+                    )
+                }
+                Spacer(Modifier.height(16.dp))
+            }
 
-        SettingsCard(modifier = Modifier.padding(horizontal = 20.dp)) {
-            // Affichage par-dessus
-            SettingsRow(
-                label = "Affichage par-dessus les apps",
-                sublabel = "Requis pour afficher le quiz lors de l'ouverture d'une app bloquée",
-                isGranted = overlayGranted,
-                onClick = if (!overlayGranted) {
-                    {
+            // ── PERMISSIONS ───────────────────────────────────────────────────
+            SectionLabel("Permissions", Modifier.padding(horizontal = 20.dp))
+            Spacer(Modifier.height(8.dp))
+
+            SettingsCard(Modifier.padding(horizontal = 20.dp)) {
+                PermissionRow(
+                    label = "Affichage par-dessus les apps",
+                    sublabel = "Requis pour afficher le quiz",
+                    isGranted = overlayGranted,
+                    onConfigure = {
                         context.startActivity(
                             Intent(
                                 Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
@@ -156,88 +199,421 @@ fun SettingsScreen() {
                             ).apply { flags = Intent.FLAG_ACTIVITY_NEW_TASK }
                         )
                     }
-                } else null
-            )
-
-            SettingsDivider()
-
-            // Accessibilité
-            SettingsRow(
-                label = "Service d'accessibilité",
-                sublabel = "Requis pour détecter l'ouverture des apps bloquées",
-                isGranted = accessibilityEnabled,
-                onClick = if (!accessibilityEnabled) {
-                    {
+                )
+                SettingsDivider()
+                PermissionRow(
+                    label = "Service d'accessibilité",
+                    sublabel = "Requis pour détecter l'ouverture des apps bloquées",
+                    isGranted = accessibilityEnabled,
+                    onConfigure = {
                         context.startActivity(
                             Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS).apply {
                                 flags = Intent.FLAG_ACTIVITY_NEW_TASK
                             }
                         )
                     }
-                } else null
+                )
+            }
+
+            Spacer(Modifier.height(24.dp))
+
+            // ── LANGUE ────────────────────────────────────────────────────────
+            SectionLabel("Langue", Modifier.padding(horizontal = 20.dp))
+            Spacer(Modifier.height(8.dp))
+
+            SettingsCard(Modifier.padding(horizontal = 20.dp)) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable(
+                            indication = null,
+                            interactionSource = remember { MutableInteractionSource() }
+                        ) { showLangDrawer = true }
+                        .padding(horizontal = 16.dp, vertical = 14.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    // Drapeau
+                    Text(
+                        if (currentLangue == "FR") "🇫🇷" else "🇬🇧",
+                        fontSize = 22.sp
+                    )
+                    Column(Modifier.weight(1f)) {
+                        Text(
+                            if (currentLangue == "FR") "Français" else "English",
+                            color = TextPrimary,
+                            fontSize = 13.sp
+                        )
+                        Text(
+                            "Questions dans cette langue",
+                            color = TextHint,
+                            fontSize = 10.sp
+                        )
+                    }
+                    Text("Changer →", color = MgPrimary, fontSize = 11.sp)
+                }
+            }
+
+            Spacer(Modifier.height(24.dp))
+
+            // ── THÈMES ────────────────────────────────────────────────────────
+            SectionLabel("Thèmes de questions", Modifier.padding(horizontal = 20.dp))
+            Spacer(Modifier.height(4.dp))
+            Text(
+                "Désactive un thème pour l'exclure du quiz",
+                color = TextHint,
+                fontSize = 10.sp,
+                modifier = Modifier.padding(horizontal = 20.dp)
+            )
+            Spacer(Modifier.height(8.dp))
+
+            if (allThemes.isEmpty()) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 20.dp)
+                        .clip(RoundedCornerShape(14.dp))
+                        .background(BgCard)
+                        .border(0.5.dp, BgBorder, RoundedCornerShape(14.dp))
+                        .padding(18.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        "Aucun thème disponible.\nSynchronise les questions d'abord.",
+                        color = TextHint,
+                        fontSize = 13.sp,
+                        lineHeight = 20.sp,
+                        textAlign = TextAlign.Center
+                    )
+                }
+            } else {
+                SettingsCard(Modifier.padding(horizontal = 20.dp)) {
+                    // Ligne "Tout activer / désactiver"
+                    val allActive = allThemes.all { it.id in activeThemeIds }
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable(
+                                indication = null,
+                                interactionSource = remember { MutableInteractionSource() }
+                            ) {
+                                val newIds = if (allActive) emptySet()
+                                else allThemes.map { it.id }.toSet()
+                                activeThemeIds = newIds
+                                scope.launch(Dispatchers.IO) {
+                                    prefs.saveActiveThemeIds(newIds)
+                                }
+                            }
+                            .padding(horizontal = 16.dp, vertical = 12.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Text(
+                            "Tous les thèmes",
+                            color = TextSecondary,
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Medium
+                        )
+                        MgToggle(checked = allActive, onCheckedChange = { checked ->
+                            val newIds =
+                                if (checked) allThemes.map { it.id }.toSet() else emptySet()
+                            activeThemeIds = newIds
+                            scope.launch(Dispatchers.IO) { prefs.saveActiveThemeIds(newIds) }
+                        })
+                    }
+
+                    SettingsDivider()
+
+                    allThemes.forEachIndexed { idx, theme ->
+                        val isActive = theme.id in activeThemeIds
+                        ThemeToggleRow(
+                            theme = theme,
+                            isActive = isActive,
+                            onToggle = { checked ->
+                                activeThemeIds = if (checked)
+                                    activeThemeIds + theme.id
+                                else
+                                    activeThemeIds - theme.id
+                                scope.launch(Dispatchers.IO) {
+                                    prefs.saveActiveThemeIds(activeThemeIds)
+                                }
+                            }
+                        )
+                        if (idx < allThemes.lastIndex) SettingsDivider()
+                    }
+                }
+            }
+
+            Spacer(Modifier.height(24.dp))
+
+            // ── QUIZ ──────────────────────────────────────────────────────────
+            SectionLabel("Quiz", Modifier.padding(horizontal = 20.dp))
+            Spacer(Modifier.height(8.dp))
+
+            SettingsCard(Modifier.padding(horizontal = 20.dp)) {
+                SettingsActionRow(
+                    label = "Configuration du quiz",
+                    sublabel = "${config.questionCount} questions · Diff. moy. ${
+                        "%.1f".format(
+                            config.averageDifficulty
+                        )
+                    }",
+                    action = "Modifier"
+                ) { /* TODO: naviguer vers config quiz */ }
+            }
+
+            Spacer(Modifier.height(24.dp))
+
+            // ── DONNÉES ───────────────────────────────────────────────────────
+            SectionLabel("Données", Modifier.padding(horizontal = 20.dp))
+            Spacer(Modifier.height(8.dp))
+
+            SettingsCard(Modifier.padding(horizontal = 20.dp)) {
+                SettingsActionRow(
+                    label = "Synchroniser les questions",
+                    sublabel = "Met à jour depuis Supabase",
+                    action = "Sync"
+                ) { SyncWorker.syncNow(context) }
+            }
+
+            Spacer(Modifier.height(40.dp))
+        }
+
+        // ── Drawer Langue (bottom sheet) ──────────────────────────────────────
+        if (showLangDrawer) {
+            LanguageDrawer(
+                currentLangue = currentLangue,
+                onSelect = { langue ->
+                    currentLangue = langue
+                    prefs.saveLangue(langue)
+                    showLangDrawer = false
+                },
+                onDismiss = { showLangDrawer = false }
             )
         }
-
-        Spacer(Modifier.height(22.dp))
-
-        // ── Section Quiz ──────────────────────────────────────────────────────
-        SectionLabel("Quiz", Modifier.padding(horizontal = 20.dp))
-        Spacer(Modifier.height(8.dp))
-
-        SettingsCard(modifier = Modifier.padding(horizontal = 20.dp)) {
-            val config = remember { prefs.loadQuizConfig() }
-
-            SettingsActionRow(
-                label = "Configuration du quiz",
-                sublabel = "${config.questionCount} questions · Diff. moy. ${"%.1f".format(config.averageDifficulty)}",
-                action = "Modifier"
-            ) {
-                // TODO: naviguer vers SetupScreen config section
-            }
-
-            SettingsDivider()
-
-            SettingsActionRow(
-                label = "Langue",
-                sublabel = if (prefs.loadLangue() == "FR") "Français" else prefs.loadLangue(),
-                action = "Changer"
-            ) {
-                // TODO: dialog langue
-            }
-
-            SettingsDivider()
-
-            SettingsActionRow(
-                label = "Thèmes actifs",
-                sublabel = "Tous les thèmes",
-                action = "Gérer"
-            ) {
-                // TODO: naviguer vers thèmes
-            }
-        }
-
-        Spacer(Modifier.height(22.dp))
-
-        // ── Section Données ───────────────────────────────────────────────────
-        SectionLabel("Données", Modifier.padding(horizontal = 20.dp))
-        Spacer(Modifier.height(8.dp))
-
-        SettingsCard(modifier = Modifier.padding(horizontal = 20.dp)) {
-            SettingsActionRow(
-                label = "Synchroniser les questions",
-                sublabel = "Met à jour la base locale depuis Supabase",
-                action = "Sync"
-            ) {
-                SyncWorker.syncNow(context)
-            }
-        }
-
-        Spacer(Modifier.height(32.dp))
     }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Composants settings
+// Language Drawer (bottom sheet manuel)
+// ─────────────────────────────────────────────────────────────────────────────
+
+@Composable
+private fun LanguageDrawer(
+    currentLangue: String,
+    onSelect: (String) -> Unit,
+    onDismiss: () -> Unit
+) {
+    val langs = listOf(
+        Triple("FR", "Français", "🇫🇷"),
+        Triple("EN", "English", "🇬🇧")
+    )
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color.Black.copy(alpha = 0.55f))
+            .clickable(
+                indication = null,
+                interactionSource = remember { MutableInteractionSource() },
+                onClick = onDismiss
+            ),
+        contentAlignment = Alignment.BottomCenter
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(topStart = 22.dp, topEnd = 22.dp))
+                .background(BgCard)
+                .border(
+                    0.5.dp,
+                    BgBorder,
+                    RoundedCornerShape(topStart = 22.dp, topEnd = 22.dp)
+                )
+                .clickable(
+                    indication = null,
+                    interactionSource = remember { MutableInteractionSource() }
+                ) {}
+                .padding(bottom = 32.dp)
+        ) {
+            // Poignée
+            Box(
+                modifier = Modifier
+                    .align(Alignment.CenterHorizontally)
+                    .padding(top = 12.dp, bottom = 18.dp)
+                    .size(width = 36.dp, height = 4.dp)
+                    .clip(RoundedCornerShape(2.dp))
+                    .background(BgBorder)
+            )
+
+            Text(
+                "Langue des questions",
+                color = TextPrimary,
+                fontSize = 16.sp,
+                fontWeight = FontWeight.Medium,
+                modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp)
+            )
+            Text(
+                "Les questions seront filtrées selon la langue choisie.",
+                color = TextHint,
+                fontSize = 12.sp,
+                modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp)
+            )
+
+            Spacer(Modifier.height(16.dp))
+
+            langs.forEach { (code, label, flag) ->
+                val isSelected = currentLangue == code
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 4.dp)
+                        .clip(RoundedCornerShape(14.dp))
+                        .background(
+                            if (isSelected) MgPrimaryDim else Color.Transparent
+                        )
+                        .border(
+                            0.5.dp,
+                            if (isSelected) MgPrimaryBorder else BgBorder,
+                            RoundedCornerShape(14.dp)
+                        )
+                        .clickable(
+                            indication = null,
+                            interactionSource = remember { MutableInteractionSource() }
+                        ) { onSelect(code) }
+                        .padding(horizontal = 16.dp, vertical = 14.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(14.dp)
+                ) {
+                    // Drapeau grande taille
+                    Text(flag, fontSize = 30.sp)
+
+                    Column(Modifier.weight(1f)) {
+                        Text(
+                            label,
+                            color = if (isSelected) MgPrimary else TextPrimary,
+                            fontSize = 15.sp,
+                            fontWeight = if (isSelected) FontWeight.Medium else FontWeight.Normal
+                        )
+                        Text(
+                            code,
+                            color = TextHint,
+                            fontSize = 11.sp
+                        )
+                    }
+
+                    // Indicateur sélection
+                    if (isSelected) {
+                        Box(
+                            modifier = Modifier
+                                .size(20.dp)
+                                .clip(CircleShape)
+                                .background(MgPrimary),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                "✓",
+                                color = Color.White,
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                    } else {
+                        Box(
+                            modifier = Modifier
+                                .size(20.dp)
+                                .clip(CircleShape)
+                                .border(1.dp, BgBorder, CircleShape)
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Toggle thème
+// ─────────────────────────────────────────────────────────────────────────────
+
+@Composable
+private fun ThemeToggleRow(
+    theme: ThemeEntity,
+    isActive: Boolean,
+    onToggle: (Boolean) -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(
+                indication = null,
+                interactionSource = remember { MutableInteractionSource() }
+            ) { onToggle(!isActive) }
+            .padding(horizontal = 16.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        // Point coloré (actif = primary, inactif = gris)
+        Box(
+            modifier = Modifier
+                .size(8.dp)
+                .clip(CircleShape)
+                .background(if (isActive) MgPrimary else BgBorder)
+        )
+
+        Column(Modifier.weight(1f)) {
+            Text(
+                theme.nom,
+                color = if (isActive) TextPrimary else TextSecondary,
+                fontSize = 13.sp,
+                fontWeight = if (isActive) FontWeight.Medium else FontWeight.Normal
+            )
+            if (theme.description.isNotBlank()) {
+                Text(
+                    theme.description,
+                    color = TextHint,
+                    fontSize = 10.sp,
+                    maxLines = 1
+                )
+            }
+        }
+
+        MgToggle(checked = isActive, onCheckedChange = onToggle)
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Toggle custom (pill switch)
+// ─────────────────────────────────────────────────────────────────────────────
+
+@Composable
+private fun MgToggle(checked: Boolean, onCheckedChange: (Boolean) -> Unit) {
+    val trackColor = if (checked) MgPrimary else BgBorder
+    val thumbColor = Color.White
+
+    Box(
+        modifier = Modifier
+            .size(width = 40.dp, height = 24.dp)
+            .clip(RoundedCornerShape(12.dp))
+            .background(trackColor)
+            .clickable(
+                indication = null,
+                interactionSource = remember { MutableInteractionSource() }
+            ) { onCheckedChange(!checked) }
+            .padding(horizontal = 3.dp),
+        contentAlignment = if (checked) Alignment.CenterEnd else Alignment.CenterStart
+    ) {
+        Box(
+            modifier = Modifier
+                .size(18.dp)
+                .clip(CircleShape)
+                .background(thumbColor)
+        )
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Composants partagés
 // ─────────────────────────────────────────────────────────────────────────────
 
 @Composable
@@ -276,42 +652,37 @@ private fun SettingsDivider() {
 }
 
 @Composable
-private fun SettingsRow(
+private fun PermissionRow(
     label: String,
     sublabel: String,
     isGranted: Boolean,
-    onClick: (() -> Unit)?
+    onConfigure: () -> Unit
 ) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .then(
-                if (onClick != null) Modifier.clickable(
+                if (!isGranted) Modifier.clickable(
                     indication = null,
                     interactionSource = remember { MutableInteractionSource() },
-                    onClick = onClick
+                    onClick = onConfigure
                 ) else Modifier
             )
             .padding(horizontal = 16.dp, vertical = 13.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        // Point de statut
         Box(
             modifier = Modifier
                 .size(8.dp)
                 .clip(CircleShape)
                 .background(if (isGranted) ColorOk else ColorWarn)
         )
-
-        // Label
-        Column(modifier = Modifier.weight(1f)) {
+        Column(Modifier.weight(1f)) {
             Text(label, color = TextPrimary, fontSize = 13.sp)
             Spacer(Modifier.height(2.dp))
             Text(sublabel, color = TextHint, fontSize = 10.sp, lineHeight = 14.sp)
         }
-
-        // Statut / action
         if (isGranted) {
             Text("Accordé", color = ColorOk, fontSize = 11.sp)
         } else {
@@ -347,7 +718,7 @@ private fun SettingsActionRow(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        Column(modifier = Modifier.weight(1f)) {
+        Column(Modifier.weight(1f)) {
             Text(label, color = TextPrimary, fontSize = 13.sp)
             Spacer(Modifier.height(2.dp))
             Text(sublabel, color = TextHint, fontSize = 10.sp, lineHeight = 14.sp)
