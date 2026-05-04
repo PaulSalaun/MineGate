@@ -23,6 +23,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -82,7 +83,7 @@ private fun diffLabel(d: Int) = DiffLabels.getOrElse(d - 1) { "?" }
 // ─────────────────────────────────────────────────────────────────────────────
 
 @Composable
-fun OverlayScreen(packageName: String, onDismiss: () -> Unit) {
+fun OverlayScreen(packageName: String, onDismiss: () -> Unit, isFreeQuiz: Boolean = false) {
     val context = LocalContext.current
     val viewModel: QuizViewModel = viewModel(factory = QuizViewModel.Factory(context))
     val state by viewModel.state.collectAsState()
@@ -94,26 +95,31 @@ fun OverlayScreen(packageName: String, onDismiss: () -> Unit) {
         modifier = Modifier
             .fillMaxSize()
             .background(BgDeep)
+            .statusBarsPadding()   // évite que la topbar passe sous la status bar système
     ) {
         Column(modifier = Modifier.fillMaxSize()) {
             // TopBar
             QuizTopBar(
                 state = state,
                 onClose = {
-                    // Ferme l'overlay ET force l'arrêt de l'app cible
-                    onDismiss()
-                    try {
-                        val am =
-                            context.getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
-                        am.killBackgroundProcesses(packageName)
-                    } catch (_: Exception) {
+                    if (isFreeQuiz) {
+                        // Quiz libre : simple retour au dashboard
+                        onDismiss()
+                    } else {
+                        // Quiz de blocage : ferme l'overlay, tue l'app cible, retour accueil
+                        onDismiss()
+                        try {
+                            val am =
+                                context.getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
+                            am.killBackgroundProcesses(packageName)
+                        } catch (_: Exception) {
+                        }
+                        val homeIntent = Intent(Intent.ACTION_MAIN).apply {
+                            addCategory(Intent.CATEGORY_HOME)
+                            flags = Intent.FLAG_ACTIVITY_NEW_TASK
+                        }
+                        context.startActivity(homeIntent)
                     }
-                    // Retour à l'écran d'accueil
-                    val homeIntent = Intent(Intent.ACTION_MAIN).apply {
-                        addCategory(Intent.CATEGORY_HOME)
-                        flags = Intent.FLAG_ACTIVITY_NEW_TASK
-                    }
-                    context.startActivity(homeIntent)
                 },
                 onSkipRequest = { showSkipDialog = true }
             )
@@ -646,10 +652,12 @@ private fun GrantedContent(difficultyPlan: List<Int>, onDismiss: () -> Unit) {
             if (difficultyPlan.isNotEmpty()) {
                 Row(horizontalArrangement = Arrangement.spacedBy(5.dp)) {
                     difficultyPlan.forEach { d ->
-                        Box(Modifier
-                            .size(9.dp)
-                            .clip(CircleShape)
-                            .background(diffColor(d)))
+                        Box(
+                            Modifier
+                                .size(9.dp)
+                                .clip(CircleShape)
+                                .background(diffColor(d))
+                        )
                     }
                 }
                 Spacer(Modifier.height(18.dp))

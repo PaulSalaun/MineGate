@@ -73,6 +73,7 @@ fun SettingsScreen() {
     val prefs = remember { MindGatePreferences(context) }
     val db = remember { MindGateDatabase.getInstance(context) }
     val scope = rememberCoroutineScope()
+    var currentLangue by remember { mutableStateOf(prefs.loadLangue()) }
 
     // ── Permissions ───────────────────────────────────────────────────────────
     var overlayGranted by remember { mutableStateOf(false) }
@@ -90,24 +91,38 @@ fun SettingsScreen() {
     var allThemes by remember { mutableStateOf<List<ThemeEntity>>(emptyList()) }
     var activeThemeIds by remember { mutableStateOf<Set<Long>>(emptySet()) }
 
-    LaunchedEffect(Unit) {
+    // Se relance à chaque changement de langue — ne montre que les thèmes de la langue courante
+    LaunchedEffect(currentLangue) {
         withContext(Dispatchers.IO) {
-            allThemes = try {
-                db.themeDao().getAll()
+            // Filtre les thèmes qui ont au moins une question dans la langue courante
+            val themesForLangue = try {
+                val themeIdsWithQuestions =
+                    db.questionDao().getThemeIdsByLangue(currentLangue).toSet()
+                db.themeDao().getAll().filter { it.id in themeIdsWithQuestions }
             } catch (_: Exception) {
                 emptyList()
             }
-            // Par défaut tous les thèmes sont actifs si rien n'est sauvegardé
+
+            allThemes = themesForLangue
+
+            // Recharge les IDs actifs et les intersecte avec les thèmes disponibles en langue
             val saved = prefs.loadActiveThemeIds().toSet()
-            activeThemeIds = if (saved.isEmpty() && allThemes.isNotEmpty())
-                allThemes.map { it.id }.toSet()
-            else saved
+            val availableIds = themesForLangue.map { it.id }.toSet()
+            activeThemeIds = when {
+                availableIds.isEmpty() -> emptySet()
+                saved.isEmpty() -> availableIds          // rien sauvegardé = tout actif
+                else -> {
+                    val inter = saved.intersect(availableIds)
+                    // prefs d'une autre langue → tout actif
+                    inter.ifEmpty { availableIds }
+                }
+            }
         }
     }
 
     // ── Langue ────────────────────────────────────────────────────────────────
-    var currentLangue by remember { mutableStateOf(prefs.loadLangue()) }
     var showLangDrawer by remember { mutableStateOf(false) }
+    var showThemeDrawer by remember { mutableStateOf(false) }
 
     // ── Config quiz ───────────────────────────────────────────────────────────
     val config = remember { prefs.loadQuizConfig() }
@@ -258,89 +273,44 @@ fun SettingsScreen() {
 
             // ── THÈMES ────────────────────────────────────────────────────────
             SectionLabel("Thèmes de questions", Modifier.padding(horizontal = 20.dp))
-            Spacer(Modifier.height(4.dp))
-            Text(
-                "Désactive un thème pour l'exclure du quiz",
-                color = TextHint,
-                fontSize = 10.sp,
-                modifier = Modifier.padding(horizontal = 20.dp)
-            )
             Spacer(Modifier.height(8.dp))
 
-            if (allThemes.isEmpty()) {
-                Box(
+            SettingsCard(Modifier.padding(horizontal = 20.dp)) {
+                Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 20.dp)
-                        .clip(RoundedCornerShape(14.dp))
-                        .background(BgCard)
-                        .border(0.5.dp, BgBorder, RoundedCornerShape(14.dp))
-                        .padding(18.dp),
-                    contentAlignment = Alignment.Center
+                        .clickable(
+                            indication = null,
+                            interactionSource = remember { MutableInteractionSource() }
+                        ) { showThemeDrawer = true }
+                        .padding(horizontal = 16.dp, vertical = 14.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    Text(
-                        "Aucun thème disponible.\nSynchronise les questions d'abord.",
-                        color = TextHint,
-                        fontSize = 13.sp,
-                        lineHeight = 20.sp,
-                        textAlign = TextAlign.Center
-                    )
-                }
-            } else {
-                SettingsCard(Modifier.padding(horizontal = 20.dp)) {
-                    // Ligne "Tout activer / désactiver"
-                    val allActive = allThemes.all { it.id in activeThemeIds }
-                    Row(
+                    // Preview des thèmes actifs
+                    Box(
                         modifier = Modifier
-                            .fillMaxWidth()
-                            .clickable(
-                                indication = null,
-                                interactionSource = remember { MutableInteractionSource() }
-                            ) {
-                                val newIds = if (allActive) emptySet()
-                                else allThemes.map { it.id }.toSet()
-                                activeThemeIds = newIds
-                                scope.launch(Dispatchers.IO) {
-                                    prefs.saveActiveThemeIds(newIds)
-                                }
-                            }
-                            .padding(horizontal = 16.dp, vertical = 12.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween
+                            .size(22.dp)
+                            .clip(RoundedCornerShape(6.dp))
+                            .background(MgPrimaryDim)
+                            .border(0.5.dp, MgPrimaryBorder, RoundedCornerShape(6.dp)),
+                        contentAlignment = Alignment.Center
                     ) {
+                        Text("◈", color = MgPrimary, fontSize = 12.sp)
+                    }
+                    Column(Modifier.weight(1f)) {
+                        Text("Thèmes actifs", color = TextPrimary, fontSize = 13.sp)
                         Text(
-                            "Tous les thèmes",
-                            color = TextSecondary,
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.Medium
+                            when {
+                                allThemes.isEmpty() -> "Synchronise les questions d'abord"
+                                activeThemeIds.size == allThemes.size -> "Tous les thèmes activés"
+                                activeThemeIds.isEmpty() -> "Aucun thème actif"
+                                else -> "${activeThemeIds.size} / ${allThemes.size} thèmes actifs"
+                            },
+                            color = TextHint, fontSize = 10.sp
                         )
-                        MgToggle(checked = allActive, onCheckedChange = { checked ->
-                            val newIds =
-                                if (checked) allThemes.map { it.id }.toSet() else emptySet()
-                            activeThemeIds = newIds
-                            scope.launch(Dispatchers.IO) { prefs.saveActiveThemeIds(newIds) }
-                        })
                     }
-
-                    SettingsDivider()
-
-                    allThemes.forEachIndexed { idx, theme ->
-                        val isActive = theme.id in activeThemeIds
-                        ThemeToggleRow(
-                            theme = theme,
-                            isActive = isActive,
-                            onToggle = { checked ->
-                                activeThemeIds = if (checked)
-                                    activeThemeIds + theme.id
-                                else
-                                    activeThemeIds - theme.id
-                                scope.launch(Dispatchers.IO) {
-                                    prefs.saveActiveThemeIds(activeThemeIds)
-                                }
-                            }
-                        )
-                        if (idx < allThemes.lastIndex) SettingsDivider()
-                    }
+                    Text("Gérer →", color = MgPrimary, fontSize = 11.sp)
                 }
             }
 
@@ -379,17 +349,228 @@ fun SettingsScreen() {
             Spacer(Modifier.height(40.dp))
         }
 
-        // ── Drawer Langue (bottom sheet) ──────────────────────────────────────
+        // ── Drawer Langue ─────────────────────────────────────────────────────
         if (showLangDrawer) {
             LanguageDrawer(
                 currentLangue = currentLangue,
                 onSelect = { langue ->
                     currentLangue = langue
                     prefs.saveLangue(langue)
+                    // Réinitialise les thèmes sauvegardés : la nouvelle langue
+                    // aura ses propres thèmes, le LaunchedEffect(currentLangue)
+                    // les rechargera et mettra tout actif par défaut.
+                    prefs.saveActiveThemeIds(emptySet())
                     showLangDrawer = false
                 },
                 onDismiss = { showLangDrawer = false }
             )
+        }
+
+        // ── Drawer Thèmes ─────────────────────────────────────────────────────
+        if (showThemeDrawer) {
+            ThemeDrawer(
+                allThemes = allThemes,
+                activeThemeIds = activeThemeIds,
+                onToggle = { themeId, checked ->
+                    activeThemeIds = if (checked) activeThemeIds + themeId
+                    else activeThemeIds - themeId
+                    scope.launch(Dispatchers.IO) { prefs.saveActiveThemeIds(activeThemeIds) }
+                },
+                onToggleAll = { checked ->
+                    val newIds = if (checked) allThemes.map { it.id }.toSet() else emptySet()
+                    activeThemeIds = newIds
+                    scope.launch(Dispatchers.IO) { prefs.saveActiveThemeIds(newIds) }
+                },
+                onDismiss = { showThemeDrawer = false }
+            )
+        }
+    }
+}
+
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Theme Drawer (bottom sheet scrollable)
+// ─────────────────────────────────────────────────────────────────────────────
+
+@Composable
+private fun ThemeDrawer(
+    allThemes: List<ThemeEntity>,
+    activeThemeIds: Set<Long>,
+    onToggle: (Long, Boolean) -> Unit,
+    onToggleAll: (Boolean) -> Unit,
+    onDismiss: () -> Unit
+) {
+    val allActive = allThemes.isNotEmpty() && allThemes.all { it.id in activeThemeIds }
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color.Black.copy(alpha = 0.55f))
+            .clickable(
+                indication = null,
+                interactionSource = remember { MutableInteractionSource() },
+                onClick = onDismiss
+            ),
+        contentAlignment = Alignment.BottomCenter
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                // Limite la hauteur à 75% de l'écran pour laisser voir qu'on est dans un drawer
+                .fillMaxSize(0.78f)
+                .clip(RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp))
+                .background(BgCard)
+                .border(0.5.dp, BgBorder, RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp))
+                .clickable(
+                    indication = null,
+                    interactionSource = remember { MutableInteractionSource() }
+                ) {}
+        ) {
+            // Poignée
+            Box(
+                modifier = Modifier
+                    .align(Alignment.CenterHorizontally)
+                    .padding(top = 12.dp, bottom = 4.dp)
+                    .size(width = 36.dp, height = 4.dp)
+                    .clip(RoundedCornerShape(2.dp))
+                    .background(BgBorder)
+            )
+
+            // Header fixe
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 20.dp, vertical = 14.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Column {
+                    Text(
+                        "Thèmes de questions",
+                        color = TextPrimary, fontSize = 17.sp, fontWeight = FontWeight.Medium
+                    )
+                    Text(
+                        when {
+                            allThemes.isEmpty() -> "Aucun thème disponible"
+                            allActive -> "Tous les thèmes activés"
+                            activeThemeIds.isEmpty() -> "Aucun thème actif"
+                            else -> "${activeThemeIds.size} / ${allThemes.size} actifs"
+                        },
+                        color = TextHint, fontSize = 11.sp
+                    )
+                }
+                // Toggle global
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Text("Tout", color = TextSecondary, fontSize = 11.sp)
+                    MgToggle(checked = allActive, onCheckedChange = onToggleAll)
+                }
+            }
+
+            // Divider
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(0.5.dp)
+                    .background(BgBorder)
+            )
+
+            if (allThemes.isEmpty()) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(32.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        "Synchronise les questions depuis l'onglet Données pour voir les thèmes.",
+                        color = TextHint, fontSize = 13.sp, lineHeight = 20.sp,
+                        textAlign = TextAlign.Center
+                    )
+                }
+            } else {
+                // Liste scrollable
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .weight(1f)
+                        .verticalScroll(rememberScrollState())
+                        .padding(bottom = 32.dp)
+                ) {
+                    allThemes.forEachIndexed { idx, theme ->
+                        val isActive = theme.id in activeThemeIds
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable(
+                                    indication = null,
+                                    interactionSource = remember { MutableInteractionSource() }
+                                ) { onToggle(theme.id, !isActive) }
+                                .padding(horizontal = 20.dp, vertical = 14.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(14.dp)
+                        ) {
+                            // Icône thème
+                            Box(
+                                modifier = Modifier
+                                    .size(36.dp)
+                                    .clip(RoundedCornerShape(10.dp))
+                                    .background(
+                                        if (isActive) MgPrimaryDim
+                                        else Color.White.copy(0.05f)
+                                    )
+                                    .border(
+                                        0.5.dp,
+                                        if (isActive) MgPrimaryBorder else BgBorder,
+                                        RoundedCornerShape(10.dp)
+                                    ),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    theme.nom.take(1).uppercase(),
+                                    color = if (isActive) MgPrimary else TextHint,
+                                    fontSize = 14.sp,
+                                    fontWeight = FontWeight.SemiBold
+                                )
+                            }
+
+                            Column(Modifier.weight(1f)) {
+                                Text(
+                                    theme.nom,
+                                    color = if (isActive) TextPrimary else TextSecondary,
+                                    fontSize = 14.sp,
+                                    fontWeight = if (isActive) FontWeight.Medium else FontWeight.Normal
+                                )
+                                if (theme.description.isNotBlank()) {
+                                    Text(
+                                        theme.description,
+                                        color = TextHint,
+                                        fontSize = 11.sp,
+                                        maxLines = 1,
+                                        lineHeight = 16.sp
+                                    )
+                                }
+                            }
+
+                            MgToggle(
+                                checked = isActive,
+                                onCheckedChange = { onToggle(theme.id, it) })
+                        }
+
+                        if (idx < allThemes.lastIndex) {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(0.5.dp)
+                                    .padding(start = 70.dp)
+                                    .background(BgBorder)
+                            )
+                        }
+                    }
+                }
+            }
         }
     }
 }

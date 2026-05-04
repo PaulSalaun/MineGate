@@ -23,6 +23,7 @@ class QuizViewModel(context: Context) : ViewModel() {
     private val db = MindGateDatabase.getInstance(context)
     private val quizResultDao = db.quizResultDao()
     private val themeDao = db.themeDao()
+    private val questionDao = db.questionDao()
 
     private val _state = MutableStateFlow<QuizState>(QuizState.Loading)
     val state: StateFlow<QuizState> = _state
@@ -43,14 +44,60 @@ class QuizViewModel(context: Context) : ViewModel() {
 
         viewModelScope.launch {
             val langue = prefs.loadLangue()
-            val themeIds = prefs.loadActiveThemeIds()
             val config = prefs.loadQuizConfig()
 
-            // Charge le map themeId → nom pour l'affichage
-            val themeMap: Map<Long, String> = try {
-                themeDao.getAll().associate { it.id to it.nom }
+            // ── Résolution des thèmes actifs pour la langue courante ──────────
+            //
+            // On part des thèmes qui ont RÉELLEMENT des questions dans la langue
+            // courante (via SELECT DISTINCT themeId FROM questions WHERE langue=X).
+            // Cela garantit qu'un changement de langue donne immédiatement les
+            // bons thèmes, indépendamment de ce qui est sauvegardé dans les prefs.
+            //
+            // Logique :
+            //   1. themeIdsForLangue = IDs ayant des questions dans la langue courante
+            //   2. savedIds = ce que l'utilisateur a coché dans les prefs
+            //   3. Si savedIds est vide → tous les thèmes de la langue (défaut)
+            //   4. Sinon → intersection(savedIds, themeIdsForLangue)
+            //   5. Si intersection vide (prefs d'une autre langue) → fallback total
+
+            // Étape 1 : thèmes ayant des questions dans cette langue (source de vérité)
+            val themeIdsForLangue: Set<Long> = try {
+                questionDao.getThemeIdsByLangue(langue).toSet()
             } catch (_: Exception) {
-                emptyMap()
+                emptySet()
+            }
+
+            // Map themeId → nom (tous les thèmes pour l'affichage)
+            val allThemesInDb = try {
+                themeDao.getAll()
+            } catch (_: Exception) {
+                emptyList()
+            }
+            val themeMap: Map<Long, String> = allThemesInDb.associate { it.id to it.nom }
+
+            // Étape 2-5 : résolution effective
+            val savedIds = prefs.loadActiveThemeIds().toSet()
+
+            val effectiveThemeIds: List<Long> = when {
+                themeIdsForLangue.isEmpty() -> {
+                    // Aucune question dans cette langue → liste vide, on affichera NoQuestions
+                    emptyList()
+                }
+
+                savedIds.isEmpty() -> {
+                    // Rien de sauvegardé = tous les thèmes de la langue courante
+                    themeIdsForLangue.toList()
+                }
+
+                else -> {
+                    val intersection = savedIds.intersect(themeIdsForLangue)
+                    if (intersection.isEmpty()) {
+                        // Les prefs pointent vers une autre langue → on prend tout
+                        themeIdsForLangue.toList()
+                    } else {
+                        intersection.toList()
+                    }
+                }
             }
 
             difficultyPlan = config.difficulties
@@ -71,7 +118,7 @@ class QuizViewModel(context: Context) : ViewModel() {
 
                 val entities = repository.getQuestionsForQuizByDifficulty(
                     langue = langue,
-                    themeIds = themeIds,
+                    themeIds = effectiveThemeIds,
                     difficulty = diff,
                     limit = fetchLimit
                 )
@@ -138,8 +185,7 @@ class QuizViewModel(context: Context) : ViewModel() {
     fun nextQuestion() {
         val feedback = _state.value as? QuizState.Feedback ?: return
         if (feedback.isGranted) {
-            _state.value = QuizState.Granted
-            return
+            _state.value = QuizState.Granted; return
         }
         showNextQuestion()
     }

@@ -21,9 +21,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -37,7 +34,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
-import com.saunaltech.mindgate.app.ui.overlay.OverlayScreen
+
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Design tokens
@@ -66,18 +63,14 @@ private val DiffLabels = listOf("Novice", "Initié", "Moyen", "Avancé", "Expert
 // ─────────────────────────────────────────────────────────────────────────────
 
 @Composable
-fun MainScreen() {
+fun MainScreen(onFreeQuiz: () -> Unit) {
     val context = LocalContext.current
     val vm: MainViewModel = viewModel(factory = MainViewModel.Factory(context))
     val data by vm.dashboard.collectAsState()
-    var showFreeQuiz by remember { mutableStateOf(false) }
+
 
     LaunchedEffect(Unit) { vm.loadDashboard() }
 
-    if (showFreeQuiz) {
-        OverlayScreen(packageName = "__free_quiz__", onDismiss = { })
-        return
-    }
 
     Column(
         modifier = Modifier
@@ -113,7 +106,7 @@ fun MainScreen() {
 
         // ── Bouton quiz libre ─────────────────────────────────────────────────
         Button(
-            onClick = { },
+            onClick = onFreeQuiz,
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(horizontal = 20.dp),
@@ -311,7 +304,8 @@ private fun StatCard(
 
 @Composable
 private fun DifficultyBarChart(stats: List<DiffStat>) {
-    val barAreaHeight: Dp = 90.dp
+    val chartHeight: Dp = 120.dp
+    val barAreaHeight: Dp = 90.dp   // hauteur réelle des barres (hors labels)
     val gridColor = BgGrid
     val axisColor = BgBorder
 
@@ -391,10 +385,10 @@ private fun DifficultyBarChart(stats: List<DiffStat>) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 4.dp),
+                .padding(vertical = 6.dp, horizontal = 4.dp),
             horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            stats.forEachIndexed { idx, _ ->
+            stats.forEachIndexed { idx, stat ->
                 val color = DiffColors.getOrElse(idx) { MgPrimary }
                 Column(
                     modifier = Modifier.weight(1f),

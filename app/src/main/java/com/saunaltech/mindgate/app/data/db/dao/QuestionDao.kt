@@ -43,4 +43,12 @@ interface QuestionDao {
 
     @Query("SELECT COUNT(*) FROM questions WHERE actif = 1 AND themeId = :themeId")
     suspend fun getCountByTheme(themeId: Long): Int
+
+    /** Nombre de questions actives pour un thème ET une langue donnée. */
+    @Query("SELECT COUNT(*) FROM questions WHERE actif = 1 AND themeId = :themeId AND langue = :langue")
+    suspend fun getCountByThemeAndLangue(themeId: Long, langue: String): Int
+
+    /** Retourne les IDs de thèmes distincts qui ont au moins une question dans cette langue. */
+    @Query("SELECT DISTINCT themeId FROM questions WHERE actif = 1 AND langue = :langue")
+    suspend fun getThemeIdsByLangue(langue: String): List<Long>
 }

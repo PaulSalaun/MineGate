@@ -11,6 +11,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
@@ -20,6 +21,7 @@ import androidx.compose.ui.unit.sp
 import com.saunaltech.mindgate.app.ui.apps.AppsScreen
 import com.saunaltech.mindgate.app.ui.history.HistoryScreen
 import com.saunaltech.mindgate.app.ui.main.MainScreen
+import com.saunaltech.mindgate.app.ui.overlay.OverlayScreen
 import com.saunaltech.mindgate.app.ui.settings.SettingsScreen
 
 private val BgNav = Color(0xFF161525)
@@ -38,59 +40,70 @@ private val TABS = listOf(
 
 @Composable
 fun MindGateNavigation() {
-    // FIX: mutableIntStateOf + rememberSaveable — Int est sérialisable dans Bundle.
-    // L'ancienne version utilisait rememberSaveable { mutableStateOf<NavTab>(...) }
-    // ce qui crashait car NavTab (sealed class) n'est pas sérialisable dans un Bundle.
     var selectedIndex by rememberSaveable { mutableIntStateOf(0) }
+    // showFreeQuiz géré ICI — au-dessus du Scaffold pour prendre tout l'écran
+    var showFreeQuiz by rememberSaveable { mutableStateOf(false) }
 
-    Scaffold(
-        containerColor = BgDeep,
-        bottomBar = {
-            NavigationBar(
-                containerColor = BgNav,
-                tonalElevation = 0.dp
-            ) {
-                TABS.forEachIndexed { index, tab ->
-                    val selected = selectedIndex == index
-                    NavigationBarItem(
-                        selected = selected,
-                        onClick = { selectedIndex = index },
-                        label = {
-                            Text(
-                                tab.label,
-                                fontSize = 10.sp,
-                                color = if (selected) MgPrimary else TextHint
+    Box(modifier = Modifier.fillMaxSize()) {
+
+        Scaffold(
+            containerColor = BgDeep,
+            bottomBar = {
+                NavigationBar(
+                    containerColor = BgNav,
+                    tonalElevation = 0.dp
+                ) {
+                    TABS.forEachIndexed { index, tab ->
+                        val selected = selectedIndex == index
+                        NavigationBarItem(
+                            selected = selected,
+                            onClick = { selectedIndex = index },
+                            label = {
+                                Text(
+                                    tab.label,
+                                    fontSize = 10.sp,
+                                    color = if (selected) MgPrimary else TextHint
+                                )
+                            },
+                            icon = {
+                                Text(
+                                    text = tab.icon,
+                                    color = if (selected) MgPrimary else TextHint,
+                                    fontSize = 17.sp
+                                )
+                            },
+                            colors = NavigationBarItemDefaults.colors(
+                                selectedIconColor = MgPrimary,
+                                unselectedIconColor = TextHint,
+                                indicatorColor = MgPrimary.copy(alpha = 0.10f)
                             )
-                        },
-                        icon = {
-                            Text(
-                                text = tab.icon,
-                                color = if (selected) MgPrimary else TextHint,
-                                fontSize = 17.sp
-                            )
-                        },
-                        colors = NavigationBarItemDefaults.colors(
-                            selectedIconColor = MgPrimary,
-                            unselectedIconColor = TextHint,
-                            indicatorColor = MgPrimary.copy(alpha = 0.10f)
                         )
-                    )
+                    }
+                }
+            }
+        ) { innerPadding ->
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(innerPadding)
+            ) {
+                when (selectedIndex) {
+                    0 -> MainScreen(onFreeQuiz = { showFreeQuiz = true })
+                    1 -> AppsScreen()
+                    2 -> HistoryScreen()
+                    3 -> SettingsScreen()
+                    else -> MainScreen(onFreeQuiz = { showFreeQuiz = true })
                 }
             }
         }
-    ) { innerPadding ->
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(innerPadding)
-        ) {
-            when (selectedIndex) {
-                0 -> MainScreen()
-                1 -> AppsScreen()
-                2 -> HistoryScreen()
-                3 -> SettingsScreen()
-                else -> MainScreen()
-            }
+
+        // OverlayScreen rendu AU-DESSUS du Scaffold — fillMaxSize non contraint
+        if (showFreeQuiz) {
+            OverlayScreen(
+                packageName = "__free_quiz__",
+                onDismiss = { showFreeQuiz = false },
+                isFreeQuiz = true   // bouton fermer = simple pop, pas de kill/homeIntent
+            )
         }
     }
 }
